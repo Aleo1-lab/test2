@@ -1,7 +1,24 @@
-import time
+"""
+Defines the different click automation modes for the autoclicker.
+
+Each click mode determines the pattern and characteristics of the generated clicks,
+such as speed (CPS), jitter, and timing variations. All modes inherit from the
+base `ClickMode` class.
+"""
+import time # time is not directly used, but often relevant for click/timing logic
 import random
 import math
 from perlin_noise import PerlinNoise
+
+# Constants for DalgalıSinüsMode for better readability
+SINE_WAVE_FREQUENCY_FACTOR = 1.5
+SINE_WAVE_AMPLITUDE_PERCENT = 0.25
+
+# Constants for GerçekçiPerlinMode
+PERLIN_CPS_NOISE_OCTAVES = 2
+PERLIN_CPS_FLUCTUATION_PERCENT = 0.4 # Fluctuation relative to peak_cps
+PERLIN_JITTER_NOISE_OCTAVES = 4
+
 
 class ClickMode:
     """Base class for all click modes."""
@@ -37,10 +54,11 @@ class ClickMode:
         if self.noise_y:
             self.noise_y = PerlinNoise(octaves=4, seed=random.randint(1, 1000))
         if self.noise_cps:
-            self.noise_cps = PerlinNoise(octaves=2, seed=random.randint(1, 1000))
+            self.noise_cps = PerlinNoise(octaves=PERLIN_CPS_NOISE_OCTAVES, seed=random.randint(1, 1000))
 
 
 class SabitMode(ClickMode):
+    """Clicks at a constant CPS with random jitter."""
     def get_next_action(self, params: dict, elapsed_time: float) -> tuple[float, int, int, float]:
         peak_cps = params['peak_cps']
         jitter_intensity = params['jitter_px']
@@ -50,16 +68,25 @@ class SabitMode(ClickMode):
         return current_cps, jitter_x, jitter_y, 1.0
 
 class DalgalıSinüsMode(ClickMode):
+    """Clicks with CPS fluctuating in a sine wave pattern around the peak CPS."""
     def get_next_action(self, params: dict, elapsed_time: float) -> tuple[float, int, int, float]:
         peak_cps = params['peak_cps']
         jitter_intensity = params['jitter_px']
-        fluctuation = math.sin(elapsed_time * 1.5) * (peak_cps * 0.25)
+
+        # Fluctuation calculation using defined constants
+        fluctuation = math.sin(elapsed_time * SINE_WAVE_FREQUENCY_FACTOR) * \
+                      (peak_cps * SINE_WAVE_AMPLITUDE_PERCENT)
         current_cps = peak_cps + fluctuation
+
         jitter_x = random.randint(-jitter_intensity, jitter_intensity)
         jitter_y = random.randint(-jitter_intensity, jitter_intensity)
         return current_cps, jitter_x, jitter_y, 1.0
 
 class PatlamaMode(ClickMode):
+    """
+    Clicks in a burst: ramps up to peak CPS, holds, then ramps down.
+    Stops automatically after the burst duration.
+    """
     def get_next_action(self, params: dict, elapsed_time: float) -> tuple[float, int, int, float]:
         peak_cps = params['peak_cps']
         jitter_intensity = params['jitter_px']
@@ -85,10 +112,10 @@ class PatlamaMode(ClickMode):
         elif elapsed_time < duration:
             current_cps = (1 - (elapsed_time - ramp_time - peak_time) / ramp_time) * peak_cps
         else:
-            # Signal to stop clicking after burst is complete
-            # This can be done by returning a CPS of 0 or a special flag
-            # For now, let's have the core app handle stopping via this signal
-            self.app_core.stop_clicking_after_current_cycle() # Request stop
+            # Signal to stop clicking after burst is complete.
+            # Returning 0 CPS will cause the AppCore loop to stop this specific click type.
+            # The call to self.app_core.stop_clicking_after_current_cycle() was redundant
+            # and would cause a global stop request, which might not be desired if only one burst mode ends.
             return 0,0,0, 1.0 # Return 0 CPS to effectively stop
 
         jitter_x = random.randint(-jitter_intensity, jitter_intensity)
@@ -96,22 +123,31 @@ class PatlamaMode(ClickMode):
         return current_cps, jitter_x, jitter_y, 1.0
 
 class GerçekçiPerlinMode(ClickMode):
+    """
+    Simulates realistic clicking using Perlin noise for CPS and jitter.
+    Uses a time counter that advances with each click's effective delay.
+    """
     def __init__(self, app_core):
         super().__init__(app_core)
         # Initialize Perlin noise generators for this mode
-        self.noise_x = PerlinNoise(octaves=4, seed=random.randint(1, 1000))
-        self.noise_y = PerlinNoise(octaves=4, seed=random.randint(1, 1000))
-        self.noise_cps = PerlinNoise(octaves=2, seed=random.randint(1, 1000))
+        self.noise_x = PerlinNoise(octaves=PERLIN_JITTER_NOISE_OCTAVES, seed=random.randint(1, 1000))
+        self.noise_y = PerlinNoise(octaves=PERLIN_JITTER_NOISE_OCTAVES, seed=random.randint(1, 1000))
+        self.noise_cps = PerlinNoise(octaves=PERLIN_CPS_NOISE_OCTAVES, seed=random.randint(1, 1000))
 
     def get_next_action(self, params: dict, elapsed_time: float) -> tuple[float, int, int, float]:
         peak_cps = params['peak_cps']
         jitter_intensity = params['jitter_px']
 
-        cps_noise = self.noise_cps(self.time_counter)
-        cps_fluctuation = cps_noise * (peak_cps * 0.4)
+        # Generate noise values based on the mode's internal time counter
+        cps_noise_val = self.noise_cps(self.time_counter)
+        jitter_x_noise_val = self.noise_x(self.time_counter)
+        jitter_y_noise_val = self.noise_y(self.time_counter)
+
+        # Apply noise to CPS and jitter
+        cps_fluctuation = cps_noise_val * (peak_cps * PERLIN_CPS_FLUCTUATION_PERCENT)
         current_cps = peak_cps + cps_fluctuation
 
-        jitter_x = self.noise_x(self.time_counter) * jitter_intensity
+        jitter_x = jitter_x_noise_val * jitter_intensity
         jitter_y = self.noise_y(self.time_counter) * jitter_intensity
 
         # Increment time_counter based on the effective delay of the last cycle
@@ -120,13 +156,13 @@ class GerçekçiPerlinMode(ClickMode):
         return current_cps, jitter_x, jitter_y, 1.0
 
 class RandomIntervalClickMode(ClickMode):
+    """Clicks at a random CPS between a specified min and max."""
     def __init__(self, app_core):
         super().__init__(app_core)
-        # Additional parameters for this mode will be fetched from UI
-        # e.g., min_cps, max_cps
+        # Parameters like min_cps_random and max_cps_random are expected in `params` dict.
 
     def get_next_action(self, params: dict, elapsed_time: float) -> tuple[float, int, int, float]:
-        min_cps = params.get('min_cps_random', 5.0) # Default min CPS
+        min_cps = params.get('min_cps_random', 5.0) # Default min CPS if not provided
         max_cps = params.get('max_cps_random', params['peak_cps']) # Default max CPS, can be linked to main CPS slider
         jitter_intensity = params['jitter_px']
 
@@ -142,27 +178,31 @@ class RandomIntervalClickMode(ClickMode):
         return current_cps, jitter_x, jitter_y, 1.0
 
 class PatternClickMode(ClickMode):
+    """
+    Clicks according to a user-defined pattern of delays (in milliseconds).
+    The pattern string is parsed (e.g., "100-80-120") into delays.
+    If the pattern is invalid, this mode signals to stop.
+    """
     def __init__(self, app_core):
         super().__init__(app_core)
-        self.pattern_delays = []
+        self.pattern_delays: list[float] = [] # Parsed delays in seconds
         self.current_pattern_index = 0
 
     def _parse_pattern(self, pattern_str: str):
         try:
             parsed_delays = [float(delay) / 1000.0 for delay in pattern_str.split('-') if delay.strip()]
             if not parsed_delays:
-                # This case handles patterns like " - " or "" or "abc" if float conversion fails early for all parts
                 self.app_core.ui.show_error("Pattern Hatası", "Pattern boş veya geçersiz karakterler içeriyor.\nÖrnek: 100-50-200")
-                self.pattern_delays = [] # Ensure it's empty
-                self.app_core.stop_clicking() # Signal core to stop
-                return False # Indicate parsing failed
+                self.pattern_delays = []
+                # self.app_core.stop_clicking() # Removed: Let get_next_action return 0 CPS
+                return False
             self.pattern_delays = parsed_delays
-            return True # Indicate parsing succeeded
-        except ValueError: # Catches float conversion errors for parts like "abc" in "100-abc-50"
+            return True
+        except ValueError:
             self.app_core.ui.show_error("Pattern Hatası", "Pattern sayısal olmayan değerler içeriyor veya format hatalı.\nÖrnek: 100-50-200")
-            self.pattern_delays = [] # Ensure it's empty
-            self.app_core.stop_clicking() # Signal core to stop
-            return False # Indicate parsing failed
+            self.pattern_delays = []
+            # self.app_core.stop_clicking() # Removed: Let get_next_action return 0 CPS
+            return False
 
 
     def reset(self):
