@@ -252,6 +252,24 @@ class AutoClickerUI(tk.Tk):
 
         self.app_core.on_mode_changed(mode, click_type) # Notify core, passing click_type
 
+        # Check if mode loading failed in AppCore and set UI fallback if needed
+        current_core_mode = None
+        if click_type == 'left':
+            current_core_mode = self.app_core.left_click_mode
+        else:
+            current_core_mode = self.app_core.right_click_mode
+
+        if current_core_mode is None: # Mode loading failed in AppCore
+            widgets_dict['mode_combo'].set("Sabit") # Set UI to fallback
+            # Optionally, show an error to the user from UI side if not already shown by AppCore
+            # self.show_error(f"{click_type.capitalize()} Mod Yükleme Hatası",
+            #                 f"{mode} modu yüklenemedi. Sabit moda dönüldü.")
+            # Re-trigger on_mode_changed with "Sabit" to ensure consistency if AppCore also fell back
+            # This could lead to a loop if not careful. Simpler: AppCore handles its own fallback instance,
+            # UI reflects what AppCore successfully loaded or its own fallback if AppCore failed entirely.
+            # For now, just setting the combobox is a visual cue.
+            # A more robust solution would involve AppCore returning the actual mode it settled on.
+
     def _update_cps_label_display(self, value, click_type: str):
         widgets_dict = self.left_click_widgets if click_type == 'left' else self.right_click_widgets
         widgets_dict['cps_label_display'].config(text=f"{float(value):.1f} CPS")

@@ -42,17 +42,21 @@ class AppCore:
     def on_mode_changed(self, mode_name: str, click_type: str):
         """Handles changes in click mode for 'left' or 'right' click types."""
         new_mode_instance = None
-        ui_widgets = self.ui.left_click_widgets if click_type == 'left' else self.ui.right_click_widgets
+        # ui_widgets access removed here to prevent AttributeError during init
         try:
             new_mode_instance = get_click_mode(mode_name, self) # Pass self (AppCore)
         except ValueError as e:
-            self.ui.show_error(f"{click_type.capitalize()} Mod Hatası", str(e))
-            if ui_widgets.get('mode_combo'):
-                 ui_widgets['mode_combo'].set("Sabit") # Fallback
-                 try:
-                     new_mode_instance = get_click_mode("Sabit", self)
-                 except ValueError:
-                     print(f"APPCORE_CRITICAL: Fallback mode 'Sabit' for {click_type} also failed.")
+            # Error is shown by UI if it's already initialized,
+            # otherwise AppCore just logs it or fails to set the mode.
+            # self.ui might not be fully available here yet.
+            print(f"Error loading mode {mode_name} for {click_type}: {e}")
+            # Attempt to load fallback mode directly without UI interaction from AppCore
+            try:
+                new_mode_instance = get_click_mode("Sabit", self)
+                print(f"Fallback to 'Sabit' mode for {click_type} due to error.")
+            except ValueError:
+                print(f"APPCORE_CRITICAL: Fallback mode 'Sabit' for {click_type} also failed.")
+                # new_mode_instance remains None
 
         if click_type == 'left':
             self.left_click_mode = new_mode_instance
