@@ -85,30 +85,34 @@ class AutoClickerUI(tk.Tk):
         # --- Global Controls and Keybindings ---
         global_controls_frame = ttk.LabelFrame(main_frame, text="Genel Kontroller ve Tuş Atama", padding="15")
         global_controls_frame.pack(fill="x", pady=(10,5))
-        global_controls_frame.columnconfigure((0,1), weight=1) # Make buttons expand
+        global_controls_frame.columnconfigure((0,1,2,3), weight=1) # Adjust column configuration
 
-        # Active Click Configuration
-        self.active_click_config_var = tk.StringVar(value="Use Left Click Settings")
-        active_click_lbl = ttk.Label(global_controls_frame, text="Aktif Tıklama Yapılandırması:")
-        active_click_lbl.grid(row=0, column=0, sticky="w", pady=(0,5), padx=(0,5))
-        active_click_combo = ttk.Combobox(global_controls_frame, textvariable=self.active_click_config_var,
-                                          values=["Use Left Click Settings", "Use Right Click Settings", "Use Both Settings"],
-                                          state="readonly", width=25)
-        active_click_combo.grid(row=0, column=1, sticky="ew", pady=(0,5))
-        self.settings_widgets.append(active_click_combo) # Add to global list for enable/disable
+        # Left Click Trigger
+        assign_left_button = ttk.Button(global_controls_frame, text="Sol Tık Tetikleyici Ata", command=lambda: self.app_core.set_assign_mode('left'))
+        assign_left_button.grid(row=0, column=0, columnspan=2, sticky="ew", pady=5, padx=(0,5))
+        self.settings_widgets.append(assign_left_button)
 
-        self.toggle_button = ttk.Button(global_controls_frame, text="Başlat", command=self.app_core.toggle_clicking, style="Accent.TButton") # Example of using a style
-        self.toggle_button.grid(row=1, column=0, sticky="ew", pady=5, padx=(0,5))
-
-        assign_button = ttk.Button(global_controls_frame, text="Tetikleyici Ata", command=self.app_core.set_assign_mode)
-        assign_button.grid(row=1, column=1, sticky="ew", pady=5, padx=(5,0))
-        self.settings_widgets.append(assign_button)
-
-        self.trigger_key_label = ttk.Label(global_controls_frame, text=KEY_NOT_ASSIGNED, foreground=COLOR_RED,
+        self.left_trigger_key_label = ttk.Label(global_controls_frame, text=KEY_NOT_ASSIGNED, foreground=COLOR_RED,
                                            font=("Segoe UI", 10, "bold"), anchor="center",
                                            relief="sunken", padding=5)
-        self.trigger_key_label.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(5,0))
+        self.left_trigger_key_label.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(0,10), padx=(0,5))
 
+        # Right Click Trigger
+        assign_right_button = ttk.Button(global_controls_frame, text="Sağ Tık Tetikleyici Ata", command=lambda: self.app_core.set_assign_mode('right'))
+        assign_right_button.grid(row=0, column=2, columnspan=2, sticky="ew", pady=5, padx=(5,0))
+        self.settings_widgets.append(assign_right_button)
+
+        self.right_trigger_key_label = ttk.Label(global_controls_frame, text=KEY_NOT_ASSIGNED, foreground=COLOR_RED,
+                                           font=("Segoe UI", 10, "bold"), anchor="center",
+                                           relief="sunken", padding=5)
+        self.right_trigger_key_label.grid(row=1, column=2, columnspan=2, sticky="ew", pady=(0,10), padx=(5,0))
+
+        # Main toggle button - its role might change or be removed later.
+        # For now, let's assume it's a global stop or reflects overall state.
+        # Or perhaps it's better to remove it for now to avoid confusion with dual triggers.
+        # self.toggle_button = ttk.Button(global_controls_frame, text="Tümünü Durdur", command=self.app_core.stop_all_clicking) # Placeholder
+        # self.toggle_button.grid(row=2, column=0, columnspan=4, sticky="ew", pady=5)
+        # Removing toggle_button for now as triggers will control start/stop.
 
         # --- Stats and Info ---
         stats_frame = ttk.Frame(main_frame)
@@ -252,14 +256,32 @@ class AutoClickerUI(tk.Tk):
 
         self.app_core.on_mode_changed(mode, click_type) # Notify core, passing click_type
 
+        # Check if mode loading failed in AppCore and set UI fallback if needed
+        current_core_mode = None
+        if click_type == 'left':
+            current_core_mode = self.app_core.left_click_mode
+        else:
+            current_core_mode = self.app_core.right_click_mode
+
+        if current_core_mode is None: # Mode loading failed in AppCore
+            widgets_dict['mode_combo'].set("Sabit") # Set UI to fallback
+            # Optionally, show an error to the user from UI side if not already shown by AppCore
+            # self.show_error(f"{click_type.capitalize()} Mod Yükleme Hatası",
+            #                 f"{mode} modu yüklenemedi. Sabit moda dönüldü.")
+            # Re-trigger on_mode_changed with "Sabit" to ensure consistency if AppCore also fell back
+            # This could lead to a loop if not careful. Simpler: AppCore handles its own fallback instance,
+            # UI reflects what AppCore successfully loaded or its own fallback if AppCore failed entirely.
+            # For now, just setting the combobox is a visual cue.
+            # A more robust solution would involve AppCore returning the actual mode it settled on.
+
     def _update_cps_label_display(self, value, click_type: str):
         widgets_dict = self.left_click_widgets if click_type == 'left' else self.right_click_widgets
         widgets_dict['cps_label_display'].config(text=f"{float(value):.1f} CPS")
 
     def update_status_display(self, status_text, color, is_running):
-        font_weight = "bold" if "ÇALIŞIYOR" in status_text else "normal"
+        font_weight = "bold" if "ÇALIŞIYOR" in status_text or "AKTİF" in status_text.upper() else "normal" # Adjusted for new status texts
         self.status_label.config(text=status_text, foreground=color, font=("Segoe UI", 16, font_weight))
-        self.toggle_button.config(text="Durdur" if is_running else "Başlat")
+        # self.toggle_button.config(text="Durdur" if is_running else "Başlat") # Removed as toggle_button is removed
 
         widget_state = "disabled" if is_running else "normal"
         for widget in self.settings_widgets: # This list now contains all configurable widgets
@@ -289,10 +311,27 @@ class AutoClickerUI(tk.Tk):
     def update_click_count(self, count):
         self.click_count_label.config(text=f"Toplam Tıklama: {count}")
 
-    def update_trigger_key_display(self, key_name, is_assigned):
-        self.trigger_key_label.config(text=key_name, foreground=COLOR_GREEN if is_assigned else COLOR_RED)
-        if key_name == ASSIGN_KEY_PROMPT:
-            self.trigger_key_label.config(foreground=COLOR_BLUE)
+    def update_trigger_key_display(self, key_name, is_assigned, trigger_type: str):
+        """Updates the trigger key display for either 'left' or 'right' trigger."""
+        label_to_update = None
+        if trigger_type == 'left':
+            label_to_update = self.left_trigger_key_label
+        elif trigger_type == 'right':
+            label_to_update = self.right_trigger_key_label
+        else: # Should not happen
+            print(f"UI_ERROR: Invalid trigger_type '{trigger_type}' for update_trigger_key_display")
+            return
+
+        if label_to_update:
+            label_to_update.config(text=key_name, foreground=COLOR_GREEN if is_assigned else COLOR_RED)
+            if key_name == ASSIGN_KEY_PROMPT: # Specific prompt for assignment
+                # Consider different prompts if assigning left vs right, e.g., "ASSIGN LEFT TRIGGER..."
+                # For now, using one generic prompt, but changing color
+                prompt_text_with_type = f"{key_name.split('...')[0]} ({trigger_type.upper()})... (İptal: ESC)"
+                label_to_update.config(text=prompt_text_with_type, foreground=COLOR_BLUE)
+            elif ASSIGN_KEY_PROMPT in key_name: # If core is sending a generic prompt
+                 label_to_update.config(foreground=COLOR_BLUE)
+
 
     def show_error(self, title, message):
         messagebox.showerror(title, message)
@@ -323,8 +362,8 @@ class AutoClickerUI(tk.Tk):
         """Returns a dictionary of all UI settings, including both tabs and global settings."""
         return {
             'left': self._get_settings_for_tab('left'),
-            'right': self._get_settings_for_tab('right'),
-            'active_config': self.active_click_config_var.get() # "Use Left Click Settings", etc.
+            'right': self._get_settings_for_tab('right')
+            # 'active_config' is removed as it's no longer managed by a global UI dropdown
         }
 
 if __name__ == '__main__':
