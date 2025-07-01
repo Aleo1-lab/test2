@@ -304,9 +304,12 @@ class AppCore:
                 # This simplified alternating approach uses the delay of the *current* click performed.
                 # A more advanced system might calculate delays to interleave based on individual target CPS.
 
-                target_time = time.perf_counter() + actual_delay
-                while time.perf_counter() < target_time:
-                    if not self.is_running: break
+                # Sleep for the calculated delay
+                if self.is_running: # Only sleep if still supposed to be running
+                    time.sleep(actual_delay)
+
+                if not self.is_running: # Check again after sleep, in case stop was called during sleep
+                    break
 
                 if hasattr(click_mode_to_use, 'time_counter') and isinstance(click_mode_to_use.time_counter, float):
                     if current_cps > 0: click_mode_to_use.time_counter += actual_delay * 0.5
